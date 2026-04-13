@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <!-- 確保在平板手機上縮放正確 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>廣福減塑特攻隊</title>
+    <!-- 引入 Tailwind CSS 以進行快速排版與美化 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 防止雙擊放大等觸控問題 */
+        body {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            /* 新增：全局背景圖片設定 */
+            background-image: url('a.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-color: #1f2937; /* 圖片載入前的備用底色 */
+        }
+        /* 自定義彈跳動畫 */
+        @keyframes bounce-short {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .animate-bounce-short {
+            animation: bounce-short 1s ease-in-out infinite;
+        }
+        /* 隱藏捲軸 */
+        ::-webkit-scrollbar { display: none; }
+        
+        /* 避免車道被文字選取 */
+        .lane-area { -webkit-tap-highlight-color: transparent; }
+    </style>
+</head>
+<body class="text-gray-800 font-sans overflow-hidden w-full h-screen">
+
+    <!-- 1. 開始畫面 -->
+    <div id="view-start" class="absolute inset-0 bg-green-100/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-50">
+        <div class="bg-white p-8 rounded-3xl shadow-xl max-w-lg w-full border-4 border-green-500">
+            <h1 class="text-4xl md:text-5xl font-black text-green-700 mb-4 tracking-wider">廣福減塑<br/>特攻隊</h1>
+            <div class="text-6xl mb-6">🚙♻️🛣️</div>
+            <p class="text-xl text-gray-700 mb-6 font-bold leading-relaxed">
+                保護地球，從圖書館做起！<br/>駕駛環保巡邏車，<br/>在賽道上收集「負責任的消費」知識！
+            </p>
+            <button onclick="changeView('map')" class="w-full bg-green-500 hover:bg-green-600 text-white text-2xl font-bold py-4 px-8 rounded-full shadow-lg transform transition active:scale-95">
+                發動引擎 (開始)
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. 地圖畫面 -->
+    <div id="view-map" class="absolute inset-0 bg-amber-50/80 backdrop-blur-sm flex flex-col items-center p-6 z-40 hidden overflow-y-auto">
+        <h2 class="text-3xl font-black text-amber-800 mb-8 mt-4 drop-shadow-md">選擇賽道</h2>
+        <div id="level-list" class="flex flex-col gap-4 w-full max-w-md pb-10">
+            <!-- 關卡按鈕會由 JS 動態生成 -->
+        </div>
+    </div>
+
+    <!-- 3. 過關/結算畫面 -->
+    <div id="view-clear" class="absolute inset-0 bg-blue-100/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-50 hidden">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl max-w-lg w-full border-4 border-blue-400 animate-bounce-short">
+            <h2 id="clear-title" class="text-4xl font-black text-blue-600 mb-4">🎉 成功抵達終點！</h2>
+            <div id="clear-emoji" class="text-8xl mb-6">✨</div>
+            <p id="clear-desc" class="text-xl text-gray-700 mb-8 font-bold">
+                你已經學會了這個階段的減塑知識，準備好開向下一個賽道了嗎？
+            </p>
+            <button id="clear-btn" onclick="nextAction()" class="w-full bg-blue-500 hover:bg-blue-600 text-white text-2xl font-bold py-4 px-8 rounded-full shadow-lg transform transition active:scale-95">
+                繼續前進
+            </button>
+        </div>
+    </div>
+
+    <!-- 4. 遊戲主畫面 -->
+    <div id="view-game" class="absolute inset-0 flex flex-col hidden bg-black/50 backdrop-blur-[2px] z-30">
+        <!-- 頂部資訊列 -->
+        <div class="bg-white/20 p-4 flex justify-between items-center text-white z-50 shadow-md absolute top-0 w-full h-[72px] backdrop-blur-md">
+            <button onclick="pauseAndExit()" class="bg-white/20 px-4 py-2 rounded-full font-bold active:bg-white/30 text-sm md:text-base">
+                暫停/退出
+            </button>
+            <div id="game-title" class="text-lg md:text-xl font-black text-center flex-1 mx-2 truncate drop-shadow-md">
+                關卡名稱
+            </div>
+            <div class="text-lg md:text-xl font-black whitespace-nowrap drop-shadow-md">
+                分數: <span id="score-display" class="text-yellow-400 text-2xl md:text-3xl">0</span> / <span id="req-score">3</span>
+            </div>
+        </div>
+
+        <!-- 遊戲賽道區域 -->
+        <div class="flex-1 relative mt-[72px] bg-transparent overflow-hidden">
+            <!-- 賽道分隔線 -->
+            <div class="absolute inset-0 flex justify-evenly pointer-events-none opacity-40">
+                <div class="w-2 h-full border-l-4 border-dashed border-white"></div>
+                <div class="w-2 h-full border-l-4 border-dashed border-white"></div>
+                <div class="w-2 h-full border-l-4 border-dashed border-white"></div>
+            </div>
+
+            <!-- 掉落的障礙物 (由 JS 控制 Y 軸與內容) -->
+            <div id="targets-row" class="absolute w-full flex px-2 z-20" style="top: -20%;">
+                <!-- 4個選項容器 -->
+                <div class="flex-1 px-1 flex flex-col items-center target-col"><div class="w-full bg-white rounded-xl shadow-[0_6px_0_#9ca3af] p-2 md:p-4 flex flex-col items-center justify-center"><div class="text-4xl md:text-5xl mb-1 target-emoji"></div><div class="font-bold text-gray-800 text-xs md:text-sm text-center leading-tight whitespace-nowrap target-label"></div></div></div>
+                <div class="flex-1 px-1 flex flex-col items-center target-col"><div class="w-full bg-white rounded-xl shadow-[0_6px_0_#9ca3af] p-2 md:p-4 flex flex-col items-center justify-center"><div class="text-4xl md:text-5xl mb-1 target-emoji"></div><div class="font-bold text-gray-800 text-xs md:text-sm text-center leading-tight whitespace-nowrap target-label"></div></div></div>
+                <div class="flex-1 px-1 flex flex-col items-center target-col"><div class="w-full bg-white rounded-xl shadow-[0_6px_0_#9ca3af] p-2 md:p-4 flex flex-col items-center justify-center"><div class="text-4xl md:text-5xl mb-1 target-emoji"></div><div class="font-bold text-gray-800 text-xs md:text-sm text-center leading-tight whitespace-nowrap target-label"></div></div></div>
+                <div class="flex-1 px-1 flex flex-col items-center target-col"><div class="w-full bg-white rounded-xl shadow-[0_6px_0_#9ca3af] p-2 md:p-4 flex flex-col items-center justify-center"><div class="text-4xl md:text-5xl mb-1 target-emoji"></div><div class="font-bold text-gray-800 text-xs md:text-sm text-center leading-tight whitespace-nowrap target-label"></div></div></div>
+            </div>
+
+            <!-- 玩家車輛 -->
+            <div id="player-car" class="absolute z-30 bottom-[10%] flex flex-col items-center transition-all duration-200 ease-out" style="left: 37.5%; transform: translateX(-50%);">
+                <div class="text-6xl md:text-7xl drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">🚙</div>
+            </div>
+
+            <!-- 碰撞回饋 UI -->
+            <div id="feedback-ui" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex flex-col items-center hidden animate-bounce-short">
+                <div id="feedback-icon" class="text-9xl font-black drop-shadow-2xl">O</div>
+                <div id="feedback-text" class="bg-black/80 text-white px-6 py-3 rounded-2xl mt-2 font-bold text-xl text-center whitespace-pre-line shadow-2xl">
+                    說明文字
+                </div>
+            </div>
+
+            <!-- 隱形觸控區域 (4車道) -->
+            <div class="absolute inset-0 z-40 flex">
+                <div class="flex-1 h-full cursor-pointer lane-area" onpointerdown="setLane(0)"></div>
+                <div class="flex-1 h-full cursor-pointer lane-area" onpointerdown="setLane(1)"></div>
+                <div class="flex-1 h-full cursor-pointer lane-area" onpointerdown="setLane(2)"></div>
+                <div class="flex-1 h-full cursor-pointer lane-area" onpointerdown="setLane(3)"></div>
+            </div>
+
+            <div class="absolute bottom-2 w-full text-center text-white/40 font-bold text-sm pointer-events-none z-10">
+                點擊上方車道來切換巡邏車位置
+            </div>
+        </div>
+    </div>
+
+<script>
+// --- 關卡資料庫 ---
+const STAGES = [
+  {
+    id: 1, title: "第一關：圖書館的怪客",
+    speed: 0.8, reqScore: 3,
+    targets: [
+      { label: "環保杯", isCorrect: true, emoji: "🥤", desc: "可重複使用" },
+      { label: "塑膠吸管", isCorrect: false, emoji: "🧃", desc: "一次性塑膠" },
+      { label: "布藝書袋", isCorrect: true, emoji: "🛍️", desc: "適合裝書" },
+      { label: "塑膠袋", isCorrect: false, emoji: "🗑️", desc: "百年不化" }
+    ]
+  },
+  {
+    id: 2, title: "第二關：綠色閱讀指南",
+    speed: 1.0, reqScore: 3,
+    targets: [
+      { label: "時尚雜誌", isCorrect: false, emoji: "👗", desc: "過度消費" },
+      { label: "地球科學", isCorrect: true, emoji: "🌍", desc: "了解地球" },
+      { label: "生態繪本", isCorrect: true, emoji: "📖", desc: "認識自然" },
+      { label: "塑膠玩具型錄", isCorrect: false, emoji: "🤖", desc: "製造垃圾" }
+    ]
+  },
+  {
+    id: 3, title: "第三關：特攻隊裝備",
+    speed: 1.3, reqScore: 4,
+    targets: [
+      { label: "索取新塑膠袋", isCorrect: false, emoji: "🚫", desc: "浪費資源" },
+      { label: "自備環保袋", isCorrect: true, emoji: "🎒", desc: "好習慣" },
+      { label: "用手拿容易掉", isCorrect: false, emoji: "📚", desc: "可能損壞書" },
+      { label: "二手紙袋", isCorrect: true, emoji: "🛍️", desc: "重複利用" }
+    ]
+  },
+  {
+    id: 4, title: "第四關：資源回收室",
+    speed: 1.6, reqScore: 4,
+    targets: [
+      { label: "一般垃圾", isCorrect: false, emoji: "🗑️", desc: "沒有分類" },
+      { label: "隨手丟棄", isCorrect: false, emoji: "💨", desc: "破壞環境" },
+      { label: "確實回收", isCorrect: true, emoji: "♻️", desc: "資源循環" },
+      { label: "舊物改造", isCorrect: true, emoji: "🎨", desc: "賦予新生命" }
+    ]
+  },
+  {
+    id: 5, title: "第五關：終極大考驗",
+    speed: 2.2, reqScore: 5,
+    targets: [
+      { label: "拒絕", isCorrect: true, emoji: "✋", desc: "拒絕一次性" },
+      { label: "過度包裝", isCorrect: false, emoji: "🎁", desc: "浪費資源" },
+      { label: "減少", isCorrect: true, emoji: "📉", desc: "只買需要的" },
+      { label: "隨意消費", isCorrect: false, emoji: "💸", desc: "產生多餘垃圾" }
+    ]
+  }
+];
+
+// --- 系統狀態變數 ---
+let unlockedLevel = 1;
+let currentLevelId = 1;
+let score = 0;
+let playerLane = 1; // 0, 1, 2, 3
+let rowY = -20;
+let currentTargets = [];
+let isPaused = true;
+let hasHit = false;
+let animationFrameId;
+
+// --- DOM 元素快取 ---
+const views = {
+    start: document.getElementById('view-start'),
+    map: document.getElementById('view-map'),
+    game: document.getElementById('view-game'),
+    clear: document.getElementById('view-clear')
+};
+const domScore = document.getElementById('score-display');
+const domReqScore = document.getElementById('req-score');
+const domGameTitle = document.getElementById('game-title');
+const domTargetsRow = document.getElementById('targets-row');
+const domTargetCols = document.querySelectorAll('.target-col');
+const domPlayerCar = document.getElementById('player-car');
+const domFeedbackUi = document.getElementById('feedback-ui');
+const domFeedbackIcon = document.getElementById('feedback-icon');
+const domFeedbackText = document.getElementById('feedback-text');
+
+// --- 輔助函數：打亂陣列 ---
+function shuffleArray(array) {
+    const newArr = [...array];
+    for (let i = newArr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+    }
+    return newArr;
+}
+
+// --- 切換畫面 ---
+function changeView(viewName) {
+    Object.values(views).forEach(v => v.classList.add('hidden'));
+    views[viewName].classList.remove('hidden');
+
+    if (viewName === 'map') renderMap();
+}
+
+// --- 渲染地圖 ---
+function renderMap() {
+    const list = document.getElementById('level-list');
+    list.innerHTML = '';
+    
+    STAGES.forEach(stage => {
+        const isUnlocked = stage.id <= unlockedLevel;
+        const btn = document.createElement('button');
+        
+        let classes = 'relative p-4 rounded-2xl border-4 text-left flex items-center justify-between transition-all ';
+        if (isUnlocked) {
+            classes += 'bg-white border-green-500 hover:bg-green-50 active:scale-95 shadow-md cursor-pointer';
+            btn.onclick = () => startGame(stage.id);
+        } else {
+            classes += 'bg-gray-200 border-gray-300 text-gray-400 cursor-not-allowed opacity-70';
+            btn.disabled = true;
+        }
+        btn.className = classes;
+
+        let icon = '🔒';
+        if (isUnlocked) icon = stage.id < unlockedLevel ? '⭐' : '🏁';
+
+        btn.innerHTML = `
+            <div>
+                <div class="font-bold text-lg">${stage.title}</div>
+                ${isUnlocked ? `<div class="text-sm text-green-600">過關目標: ${stage.reqScore} 分</div>` : ''}
+            </div>
+            <div class="text-3xl">${icon}</div>
+        `;
+        list.appendChild(btn);
+    });
+}
+
+// --- 車道控制 ---
+function setLane(laneIndex) {
+    if (isPaused) return;
+    playerLane = laneIndex;
+    // 計算左邊距 (0:12.5%, 1:37.5%, 2:62.5%, 3:87.5%)
+    const leftPercent = (laneIndex * 25) + 12.5;
+    domPlayerCar.style.left = `${leftPercent}%`;
+}
+
+// --- 開始遊戲 ---
+function startGame(levelId) {
+    currentLevelId = levelId;
+    score = 0;
+    updateScoreUI();
+    
+    const stage = STAGES.find(s => s.id === currentLevelId);
+    domGameTitle.innerText = stage.title.split('：')[1] || stage.title;
+    domReqScore.innerText = stage.reqScore;
+    
+    setLane(1); // 預設中間車道
+    changeView('game');
+    spawnNextRow();
+    
+    isPaused = false;
+    cancelAnimationFrame(animationFrameId);
+    gameLoop();
+}
+
+// --- 生成下一排障礙物 ---
+function spawnNextRow() {
+    const stage = STAGES.find(s => s.id === currentLevelId);
+    currentTargets = shuffleArray(stage.targets);
+    
+    // 更新 DOM
+    currentTargets.forEach((target, index) => {
+        const col = domTargetCols[index];
+        col.querySelector('.target-emoji').innerText = target.emoji;
+        col.querySelector('.target-label').innerText = target.label;
+    });
+
+    rowY = -20;
+    domTargetsRow.style.top = `${rowY}%`;
+    hasHit = false;
+    isPaused = false;
+}
+
+// --- 遊戲主迴圈 ---
+function gameLoop() {
+    if (!isPaused) {
+        const stage = STAGES.find(s => s.id === currentLevelId);
+        rowY += stage.speed;
+        
+        // 碰撞判定區間 (Y軸 80% ~ 85%)
+        if (rowY >= 80 && rowY <= 85 && !hasHit) {
+            handleCollision();
+        } 
+        // 錯過重置
+        else if (rowY > 105) {
+            spawnNextRow();
+        }
+
+        domTargetsRow.style.top = `${rowY}%`;
+    }
+    
+    animationFrameId = requestAnimationFrame(gameLoop);
+}
+
+// --- 處理碰撞 ---
+function handleCollision() {
+    hasHit = true;
+    isPaused = true; // 暫停掉落
+    
+    const hitTarget = currentTargets[playerLane];
+    
+    domFeedbackUi.classList.remove('hidden');
+    
+    if (hitTarget.isCorrect) {
+        domFeedbackIcon.innerText = 'O';
+        domFeedbackIcon.className = 'text-9xl font-black drop-shadow-2xl text-green-400';
+        domFeedbackText.innerText = `選對了！\n${hitTarget.desc}`;
+        score++;
+        updateScoreUI();
+    } else {
+        domFeedbackIcon.innerText = 'X';
+        domFeedbackIcon.className = 'text-9xl font-black drop-shadow-2xl text-red-500';
+        domFeedbackText.innerText = `糟糕！\n${hitTarget.desc}`;
+    }
+
+    // 檢查是否過關
+    const stage = STAGES.find(s => s.id === currentLevelId);
+    if (score >= stage.reqScore) {
+        setTimeout(showClearScreen, 1500);
+    } else {
+        setTimeout(() => {
+            domFeedbackUi.classList.add('hidden');
+            spawnNextRow();
+        }, 1500);
+    }
+}
+
+function updateScoreUI() {
+    domScore.innerText = score;
+}
+
+// --- 暫停與退出 ---
+function pauseAndExit() {
+    isPaused = true;
+    changeView('map');
+}
+
+// --- 過關畫面處理 ---
+function showClearScreen() {
+    domFeedbackUi.classList.add('hidden');
+    changeView('clear');
+    
+    const isAllClear = currentLevelId === 5;
+    
+    if (currentLevelId === unlockedLevel && unlockedLevel < 5) {
+        unlockedLevel++;
+    }
+
+    const titleObj = document.getElementById('clear-title');
+    const emojiObj = document.getElementById('clear-emoji');
+    const descObj = document.getElementById('clear-desc');
+    const btnObj = document.getElementById('clear-btn');
+
+    if (isAllClear) {
+        titleObj.innerText = '🏆 任務圓滿達成！';
+        emojiObj.innerText = '🎖️';
+        descObj.innerText = '恭喜你成為頂尖的「廣福減塑特攻隊員」！請在生活中繼續實踐 SDGs 12 精神吧！';
+        btnObj.innerText = '回到首頁';
+    } else {
+        titleObj.innerText = '🏁 成功抵達終點！';
+        emojiObj.innerText = '✨';
+        descObj.innerText = '你已經學會了這個階段的減塑知識，準備好開向下一個賽道了嗎？';
+        btnObj.innerText = '繼續前進';
+    }
+}
+
+function nextAction() {
+    if (currentLevelId === 5) {
+        changeView('start');
+    } else {
+        changeView('map');
+    }
+}
+</script>
+</body>
+</html>
